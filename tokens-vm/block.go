@@ -51,23 +51,43 @@ func (b *Block) ID() ids.ID {
 }
 
 func (b *Block) Accept() error {
-	//TODO implement me
-	panic("implement me")
+	b.status = choices.Accepted // Change state of this block
+	blkID := b.ID()
+
+	// Persist data
+	if err := b.vm.state.PutBlock(b); err != nil {
+		return err
+	}
+
+	// Set last accepted ID to this block ID
+	if err := b.vm.state.SetLastAccepted(blkID); err != nil {
+		return err
+	}
+
+	// Delete this block from verified blocks as it's accepted
+	delete(b.vm.verifiedBlocks, b.ID())
+
+	// Commit changes to database
+	return b.vm.state.Commit()
 }
 
 func (b *Block) Reject() error {
-	//TODO implement me
-	panic("implement me")
+	b.status = choices.Rejected // Change state of this block
+	if err := b.vm.state.PutBlock(b); err != nil {
+		return err
+	}
+	// Delete this block from verified blocks as it's rejected
+	delete(b.vm.verifiedBlocks, b.ID())
+	// Commit changes to database
+	return b.vm.state.Commit()
 }
 
 func (b *Block) Status() choices.Status {
-	//TODO implement me
-	panic("implement me")
+	return b.status
 }
 
 func (b *Block) Parent() ids.ID {
-	//TODO implement me
-	panic("implement me")
+	return b.ParentID
 }
 
 func (b *Block) Verify() error {

@@ -28,6 +28,10 @@ const (
 	lastAcceptedByte byte = iota
 )
 
+const (
+	blockCacheSize = 8192
+)
+
 var _ BlockState = &blockState{}
 
 var lastAcceptedKey = []byte{lastAcceptedByte}
@@ -49,6 +53,14 @@ type blockState struct {
 
 	// vm reference
 	vm *VM
+}
+
+func NewBlockState(db database.Database, vm *VM) BlockState {
+	return &blockState{
+		blkCache: &cache.LRU{Size: blockCacheSize},
+		blockDB:  db,
+		vm:       vm,
+	}
 }
 
 type blkWrapper struct {
