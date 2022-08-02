@@ -95,7 +95,7 @@ func (vm *VM) Initialize(
 	vm.state = NewState(vm.dbManager.Current().Database, vm)
 
 	// Initialize genesis
-	if err := vm.initGenesis(genesisData); err != nil {
+	if err := vm.initGenesis(genesisBytes); err != nil {
 		return err
 	}
 
@@ -139,18 +139,30 @@ func (vm *VM) Disconnected(id ids.NodeID) error {
 	return nil
 }
 
+// SetState sets this VM state according to given snow.State
 func (vm *VM) SetState(state snow.State) error {
-	//TODO implement me
-	panic("implement me")
+	switch state {
+	// Engine reports it's bootstrapping
+	case snow.Bootstrapping:
+		return vm.onBootstrapStarted()
+	case snow.NormalOp:
+		// Engine reports it can start normal operations
+		return vm.onNormalOperationsStarted()
+	default:
+		return snow.ErrUnknownState
+	}
 }
 
 func (vm *VM) Shutdown() error {
-	//TODO implement me
-	panic("implement me")
+	if vm.state == nil {
+		return nil
+	}
+
+	return vm.state.Close() // close versionDB
 }
 
 func (vm *VM) Version() (string, error) {
-	return Vers
+	return Version.String(), nil
 }
 
 func (vm *VM) CreateStaticHandlers() (map[string]*common.HTTPHandler, error) {
@@ -186,8 +198,7 @@ func (vm *VM) CreateHandlers() (map[string]*common.HTTPHandler, error) {
 	}, nil
 }
 func (vm *VM) GetBlock(id ids.ID) (snowman.Block, error) {
-	//TODO implement me
-	panic("implement me")
+	return vm.getBlock(id)
 }
 
 func (vm *VM) ParseBlock(bytes []byte) (snowman.Block, error) {
@@ -249,13 +260,22 @@ func (vm *VM) BuildBlock() (snowman.Block, error) {
 }
 
 func (vm *VM) SetPreference(id ids.ID) error {
-	//TODO implement me
-	panic("implement me")
+	vm.preferred = id
+	return nil
 }
 
 func (vm *VM) LastAccepted() (ids.ID, error) {
-	//TODO implement me
-	panic("implement me")
+	return vm.state.GetLastAccepted()
+}
+
+// NotifyBlockReady tells the consensus engine that a new block
+// is ready to be created
+func (vm *VM) NotifyBlockReady() {
+	select {
+	case vm.toEngine <- common.PendingTxs:
+	default:
+		vm.ctx.Log.Debug("dropping message to consensus engine")
+	}
 }
 
 // NewBlock returns a new Block where:
@@ -333,4 +353,20 @@ func (vm *VM) getBlock(blkID ids.ID) (*Block, error) {
 	}
 
 	return vm.state.GetBlock(blkID)
+}
+
+// onBootstrapStarted marks this VM as bootstrapping
+func (vm *VM) onBootstrapStarted() error {
+	vm.bootstrapped.SetValue(false)
+	return nil
+}
+
+// onNormalOperationsStarted marks this VM as bootstrapped
+func (vm *VM) onNormalOperationsStarted() error {
+	// No need to set it again
+	if vm.bootstrapped.GetValue() {
+		return nil
+	}
+	vm.bootstrapped.SetValue(true)
+	return nil
 }
